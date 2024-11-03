@@ -10,7 +10,6 @@
 use super::*;
 
 const TEST_PORT: u16 = 9000;
-const TEST_STREAM_ID: &str = "test_stream";
 
 #[test]
 fn test_srt_lifecycle() {
@@ -54,12 +53,56 @@ fn test_socket_options() {
 
   let socket = SrtSocketConnection::new().expect("Socket creation failed");
 
-  // Test setting stream ID
-  assert!(socket.set_sock_opt(0, SrtSocketOptions::SrtOptStreamID, TEST_STREAM_ID).is_ok(), "Failed to set stream ID: {}", SrtSocketConnection::get_last_srt_error());
+  // Test Setting/Getting Boolean Options
+  let value = true;
+  assert!(socket.set_sock_opt(0, SrtSocketOptions::SrtOptReuseAddr, SrtOptionValue::Bool(value)).is_ok(), "Failed to set SrtOptReuseAddr: {}", SrtSocketConnection::get_last_srt_error());
+  let ret = match socket.get_sock_flag(SrtSocketOptions::SrtOptReuseAddr) {
+    Ok(SrtOptionValue::Bool(val)) => val,
+    _ => panic!("Expected boolean value for SrtOptReuseAddr"),
+  };
+  assert_eq!(ret, value, "SrtOptReuseAddr mismatch");
 
-  // Test getting stream ID
-  let stream_id = socket.get_sock_flag(SrtSocketOptions::SrtOptStreamID).expect("Failed to get stream ID");
-  assert_eq!(stream_id, TEST_STREAM_ID, "Stream ID mismatch");
+  let value = false;
+  assert!(socket.set_sock_opt(0, SrtSocketOptions::SrtOptRCVSYN, SrtOptionValue::Bool(value)).is_ok(), "Failed to set SrtOptRCVSYN: {}", SrtSocketConnection::get_last_srt_error());
+  let ret = match socket.get_sock_flag(SrtSocketOptions::SrtOptRCVSYN) {
+    Ok(SrtOptionValue::Bool(val)) => val,
+    _ => panic!("Expected boolean value for SrtOptRCVSYN"),
+  };
+  assert_eq!(ret, value, "SrtOptRCVSYN mismatch");
+
+  // Test Setting/Getting Integer Options
+  let value = 256;
+  assert!(socket.set_sock_opt(0, SrtSocketOptions::SrtOptLatency, SrtOptionValue::Int(value)).is_ok(), "Failed to set SrtOptLatency: {}", SrtSocketConnection::get_last_srt_error());
+  let ret = match socket.get_sock_flag(SrtSocketOptions::SrtOptLatency) {
+    Ok(SrtOptionValue::Int(val)) => val,
+    _ => panic!("Expected integer value for SrtOptLatency"),
+  };
+  assert_eq!(ret, value, "SrtOptLatency mismatch");
+
+  let value = 123;
+  assert!(socket.set_sock_opt(0, SrtSocketOptions::SrtOptRCVLatency, SrtOptionValue::Int(value)).is_ok(), "Failed to set SrtOptRCVLatency: {}", SrtSocketConnection::get_last_srt_error());
+  let ret = match socket.get_sock_flag(SrtSocketOptions::SrtOptRCVLatency) {
+    Ok(SrtOptionValue::Int(val)) => val,
+    _ => panic!("Expected integer value for SrtOptRCVLatency"),
+  };
+  assert_eq!(ret, value, "SrtOptRCVLatency mismatch");
+
+  let value = 1_000_000_000;
+  assert!(socket.set_sock_opt(0, SrtSocketOptions::SrtOptPeerLatency, SrtOptionValue::Int(value)).is_ok(), "Failed to set SrtOptPeerLatency: {}", SrtSocketConnection::get_last_srt_error());
+  let ret = match socket.get_sock_flag(SrtSocketOptions::SrtOptPeerLatency) {
+    Ok(SrtOptionValue::Int(val)) => val,
+    _ => panic!("Expected integer value for SrtOptPeerLatency"),
+  };
+  assert_eq!(ret, value, "SrtOptPeerLatency mismatch");
+
+  // Test Setting/Getting String Options
+  let value = "test";
+  assert!(socket.set_sock_opt(0, SrtSocketOptions::SrtOptStreamID, SrtOptionValue::String(value.to_string())).is_ok(), "Failed to set stream ID: {}", SrtSocketConnection::get_last_srt_error());
+  let ret = match socket.get_sock_flag(SrtSocketOptions::SrtOptStreamID) {
+    Ok(SrtOptionValue::String(val)) => val,
+    _ => panic!("Expected string value for stream ID"),
+  };
+  assert_eq!(ret, value, "Stream ID mismatch");
 
   teardown();
 }

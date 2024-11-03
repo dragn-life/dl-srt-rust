@@ -9,7 +9,7 @@
  */
 use std::os::raw::{c_char, c_int};
 use std::ffi::{CString, CStr};
-use std::io::{Error, Result};
+use std::io::{Error, ErrorKind, Result};
 
 // Declare test module
 #[cfg(test)]
@@ -40,6 +40,7 @@ extern "C" {
 
 pub type SRTSOCKET = c_int;
 
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub enum SrtSocketStatus {
   SrtStatusInit = 1,
@@ -53,13 +54,25 @@ pub enum SrtSocketStatus {
   SrtStatusNonExist,
 }
 
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub enum SrtSocketOptions {
   SrtOptRCVSYN = 2,
   SrtOptReuseAddr = 15,
+  SrtOptLatency = 23,
+  SrtOptRCVLatency = 43,
+  SrtOptPeerLatency = 44,
   SrtOptStreamID = 46,
 }
 
+#[derive(Debug)]
+pub enum SrtOptionValue {
+  Bool(bool),
+  Int(i32),
+  String(String),
+}
+
+#[derive(Debug)]
 pub struct SrtSocketConnection {
   sock: SRTSOCKET,
 }
@@ -127,24 +140,109 @@ impl SrtSocketConnection {
     Ok(Self { sock })
   }
 
-  pub fn set_sock_opt(&self, level: c_int, optname: SrtSocketOptions, optval: &str) -> Result<()> {
-    let optval = CString::new(optval).unwrap();
-    let ret = unsafe { srt_setsockopt(self.sock, level, optname, optval.as_ptr(), optval.as_bytes().len() as i32) };
-    if ret == -1 {
-      return Err(Error::last_os_error());
+  pub fn set_sock_opt(&self, level: c_int, opt_name: SrtSocketOptions, opt_value: SrtOptionValue) -> Result<()> {
+    match opt_value {
+      SrtOptionValue::Bool(bool_value) => {
+        let val: i32 = if bool_value { 1 } else { 0 };
+        let bytes = val.to_ne_bytes();
+        let ret = unsafe {
+          srt_setsockopt(
+            self.sock,
+            level,
+            opt_name,
+            bytes.as_ptr() as *const c_char,
+            size_of::<i32>() as i32,
+          )
+        };
+        if ret == -1 {
+          return Err(Error::last_os_error());
+        }
+      }
+      SrtOptionValue::Int(int_value) => {
+        let bytes = int_value.to_ne_bytes();
+        let ret = unsafe {
+          srt_setsockopt(
+            self.sock,
+            level,
+            opt_name,
+            bytes.as_ptr() as *const c_char,
+            size_of::<i32>() as i32,
+          )
+        };
+        if ret == -1 {
+          return Err(Error::last_os_error());
+        }
+      }
+      SrtOptionValue::String(string_value) => {
+        let c_string = CString::new(string_value)
+          .map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid string value"))?;
+        let ret = unsafe {
+          srt_setsockopt(
+            self.sock,
+            level,
+            opt_name,
+            c_string.as_ptr() as *const c_char,
+            c_string.as_bytes_with_nul().len() as i32,
+          )
+        };
+        if ret == -1 {
+          return Err(Error::last_os_error());
+        }
+      }
     }
     Ok(())
   }
 
-  pub fn get_sock_flag(&self, optname: SrtSocketOptions) -> Result<String> {
-    let mut optval = [0 as c_char; 256];
-    let mut optlen = 256;
-    let ret = unsafe { srt_getsockflag(self.sock, optname, optval.as_mut_ptr(), &mut optlen) };
+  pub fn get_sock_flag(&self, opt_name: SrtSocketOptions) -> Result<SrtOptionValue> {
+    // Start with a large buffer size
+    let mut buffer = vec![0u8; 1024];
+    let mut buffer_size = buffer.len() as c_int;
+
+    let ret = unsafe {
+      srt_getsockflag(
+        self.sock,
+        opt_name,
+        buffer.as_mut_ptr() as *mut c_char,
+        &mut buffer_size as *mut c_int,
+      )
+    };
     if ret == -1 {
       return Err(Error::last_os_error());
     }
-    let optval = unsafe { CStr::from_ptr(optval.as_ptr()) };
-    Ok(optval.to_str().unwrap().to_string())
+
+    // Different options have different types
+    match opt_name {
+      // Boolean options
+      SrtSocketOptions::SrtOptRCVSYN |
+      SrtSocketOptions::SrtOptReuseAddr => {
+        if buffer_size != 1 {
+          return Err(Error::new(ErrorKind::InvalidData, "Invalid boolean value"));
+        }
+        let value = i32::from_ne_bytes(
+          buffer[..std::mem::size_of::<i32>()].try_into()
+            .map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid boolean value"))?
+        );
+        Ok(SrtOptionValue::Bool(value != 0))
+      }
+      // Integer options
+      SrtSocketOptions::SrtOptLatency |
+      SrtSocketOptions::SrtOptRCVLatency |
+      SrtSocketOptions::SrtOptPeerLatency => {
+        let value = i32::from_ne_bytes(buffer[..buffer_size as usize].try_into()
+          .map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid integer value"))?
+        );
+        Ok(SrtOptionValue::Int(value))
+      }
+      // String Options
+      SrtSocketOptions::SrtOptStreamID => {
+        let value = CStr::from_bytes_with_nul(&buffer[..buffer_size as usize])
+          .map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid string value"))?
+          .to_str()
+          .map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid string value"))?
+          .to_string();
+        Ok(SrtOptionValue::String(value))
+      }
+    }
   }
 
   pub fn send(&self, data: &[u8]) -> Result<()> {
