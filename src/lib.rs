@@ -11,6 +11,10 @@ use std::os::raw::{c_char, c_int};
 use std::ffi::{CString, CStr};
 use std::io::{Error, Result};
 
+// Declare test module
+#[cfg(test)]
+mod test;
+
 #[link(name = "srt")]
 extern "C" {
   fn srt_startup() -> c_int;
