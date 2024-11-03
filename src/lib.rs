@@ -147,23 +147,38 @@ impl SrtSocketConnection {
     Ok(optval.to_str().unwrap().to_string())
   }
 
-  pub fn send(&self, buf: &str) -> Result<()> {
-    let buf = CString::new(buf).unwrap();
-    let ret = unsafe { srt_send(self.sock, buf.as_ptr(), buf.as_bytes().len() as i32, 0) };
+  pub fn send(&self, data: &[u8]) -> Result<()> {
+    let ret = unsafe {
+      srt_send(
+        self.sock,
+        data.as_ptr() as *const c_char,
+        data.len() as i32,
+        0,
+      )
+    };
     if ret == -1 {
       return Err(Error::last_os_error());
     }
     Ok(())
   }
 
-  pub fn recv(&self, len: i32) -> Result<String> {
-    let mut buf = vec![0 as c_char; len as usize];
-    let ret = unsafe { srt_recv(self.sock, buf.as_mut_ptr(), len, 0) };
-    if ret == -1 {
+  pub fn recv(&self, len: i32) -> Result<Vec<u8>> {
+    // Create buffer to store received data
+    let mut buf = vec![0u8; len as usize];
+    let bytes_received = unsafe {
+      srt_recv(
+        self.sock,
+        buf.as_mut_ptr() as *mut c_char,
+        len,
+        0,
+      )
+    };
+    if bytes_received == -1 {
       return Err(Error::last_os_error());
     }
-    let buf = unsafe { CStr::from_ptr(buf.as_ptr()) };
-    Ok(buf.to_str().unwrap().to_string())
+    // Truncate buffer to actual received bytes
+    buf.truncate(bytes_received as usize);
+    Ok(buf)
   }
 
   pub fn get_last_srt_error() -> String {

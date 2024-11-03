@@ -70,7 +70,8 @@ fn test_error_handling() {
 
   // Test invalid socket operations
   let invalid_socket = SrtSocketConnection { sock: -1 };
-  assert!(invalid_socket.send("test").is_err(), "Send should fail on invalid socket");
+  let test_data: &[u8] = b"test";
+  assert!(invalid_socket.send(test_data).is_err(), "Send should fail on invalid socket");
   assert!(invalid_socket.recv(256).is_err(), "Recv should fail on invalid socket");
 
   // Test error string retrieval
