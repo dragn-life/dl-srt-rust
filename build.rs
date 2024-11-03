@@ -14,7 +14,7 @@ fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
     // Specify the path to your SRT library directory
-    let srt_lib_dir = manifest_dir.join("lib");
+    let srt_lib_dir = manifest_dir.join("vendor").join("srt");
 
     // Tell cargo to look for static libraries in the specified directory
     println!("cargo:rustc-link-search=native={}", srt_lib_dir.display());
