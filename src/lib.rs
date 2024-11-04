@@ -10,6 +10,7 @@
 use std::os::raw::{c_char, c_int};
 use std::ffi::{CString, CStr};
 use std::io::{Error, ErrorKind, Result};
+use std::ptr;
 
 // Declare test module
 #[cfg(test)]
@@ -24,7 +25,7 @@ extern "C" {
   fn srt_bind(sock: SRTSOCKET, addr: *const SockAddrIn, addrlen: c_int) -> c_int;
 
   fn srt_listen(sock: SRTSOCKET, backlog: c_int) -> c_int;
-  fn srt_accept(sock: SRTSOCKET) -> SRTSOCKET;
+  fn srt_accept(sock: SRTSOCKET, addr: *mut libc::sockaddr, addrlen: *mut c_int) -> SRTSOCKET;
 
   fn srt_close(sock: SRTSOCKET) -> SRTSOCKET;
   fn srt_setsockopt(sock: SRTSOCKET, level: c_int, optname: SrtSocketOptions, optval: *const c_char, optlen: c_int) -> c_int;
@@ -133,7 +134,9 @@ impl SrtSocketConnection {
   }
 
   pub fn accept(&self) -> Result<Self> {
-    let sock = unsafe { srt_accept(self.sock) };
+    let sock = unsafe {
+      srt_accept(self.sock, ptr::null_mut(), ptr::null_mut())
+    };
     if sock == -1 {
       return Err(Error::last_os_error());
     }
