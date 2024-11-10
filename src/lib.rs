@@ -77,6 +77,12 @@ pub enum SrtOptionValue {
 pub struct SrtSocketConnection {
   sock: SRTSOCKET,
 }
+// Display for SrtSocketConnection
+impl std::fmt::Display for SrtSocketConnection {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "SRTSOCKET: {}", self.sock)
+  }
+}
 
 #[repr(C)]
 pub struct SockAddrIn {
@@ -138,9 +144,15 @@ impl SrtSocketConnection {
       srt_accept(self.sock, ptr::null_mut(), ptr::null_mut())
     };
     if sock == -1 {
+      // TODO: Disconnect Error
       return Err(Error::last_os_error());
     }
     Ok(Self { sock })
+  }
+
+  pub fn close(&self) {
+    // TODO: Handle error w/ SrtError
+    unsafe { srt_close(self.sock) };
   }
 
   pub fn set_sock_opt(&self, level: c_int, opt_name: SrtSocketOptions, opt_value: SrtOptionValue) -> Result<()> {
@@ -258,6 +270,7 @@ impl SrtSocketConnection {
       )
     };
     if ret == -1 {
+      eprintln!("Error sending data: {:?}", Self::get_last_srt_error());
       return Err(Error::last_os_error());
     }
     Ok(())
@@ -294,6 +307,7 @@ impl SrtSocketConnection {
 }
 
 impl Drop for SrtSocketConnection {
+  // TODO: Use self.close() instead of unsafe close
   fn drop(&mut self) {
     unsafe { srt_close(self.sock) };
   }
