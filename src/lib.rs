@@ -7,9 +7,10 @@
  *  file, You can obtain one at http://mozilla.org/MPL/2.0/.
  *
  */
-use std::os::raw::{c_char, c_int};
-use std::ffi::{CString, CStr};
+
+use std::ffi::{CStr, CString};
 use std::io::{Error, ErrorKind, Result};
+use std::os::raw::{c_char, c_int};
 use std::ptr;
 
 // Declare test module
@@ -28,8 +29,19 @@ extern "C" {
   fn srt_accept(sock: SRTSOCKET, addr: *mut libc::sockaddr, addrlen: *mut c_int) -> SRTSOCKET;
 
   fn srt_close(sock: SRTSOCKET) -> SRTSOCKET;
-  fn srt_setsockopt(sock: SRTSOCKET, level: c_int, optname: SrtSocketOptions, optval: *const c_char, optlen: c_int) -> c_int;
-  fn srt_getsockflag(sock: SRTSOCKET, optname: SrtSocketOptions, optval: *mut c_char, optlen: *mut c_int) -> c_int;
+  fn srt_setsockopt(
+    sock: SRTSOCKET,
+    level: c_int,
+    optname: SrtSocketOptions,
+    optval: *const c_char,
+    optlen: c_int,
+  ) -> c_int;
+  fn srt_getsockflag(
+    sock: SRTSOCKET,
+    optname: SrtSocketOptions,
+    optval: *mut c_char,
+    optlen: *mut c_int,
+  ) -> c_int;
 
   fn srt_send(sock: SRTSOCKET, buf: *const c_char, len: c_int, flags: c_int) -> c_int;
   fn srt_recv(sock: SRTSOCKET, buf: *mut c_char, len: c_int, flags: c_int) -> c_int;
@@ -140,9 +152,7 @@ impl SrtSocketConnection {
   }
 
   pub fn accept(&self) -> Result<Self> {
-    let sock = unsafe {
-      srt_accept(self.sock, ptr::null_mut(), ptr::null_mut())
-    };
+    let sock = unsafe { srt_accept(self.sock, ptr::null_mut(), ptr::null_mut()) };
     if sock == -1 {
       // TODO: Disconnect Error
       return Err(Error::last_os_error());
@@ -155,7 +165,12 @@ impl SrtSocketConnection {
     unsafe { srt_close(self.sock) };
   }
 
-  pub fn set_sock_opt(&self, level: c_int, opt_name: SrtSocketOptions, opt_value: SrtOptionValue) -> Result<()> {
+  pub fn set_sock_opt(
+    &self,
+    level: c_int,
+    opt_name: SrtSocketOptions,
+    opt_value: SrtOptionValue,
+  ) -> Result<()> {
     match opt_value {
       SrtOptionValue::Bool(bool_value) => {
         let val: i32 = if bool_value { 1 } else { 0 };
@@ -228,23 +243,25 @@ impl SrtSocketConnection {
     // Different options have different types
     match opt_name {
       // Boolean options
-      SrtSocketOptions::SrtOptRCVSYN |
-      SrtSocketOptions::SrtOptReuseAddr => {
+      SrtSocketOptions::SrtOptRCVSYN | SrtSocketOptions::SrtOptReuseAddr => {
         if buffer_size != 1 {
           return Err(Error::new(ErrorKind::InvalidData, "Invalid boolean value"));
         }
         let value = i32::from_ne_bytes(
-          buffer[..std::mem::size_of::<i32>()].try_into()
-            .map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid boolean value"))?
+          buffer[..std::mem::size_of::<i32>()]
+            .try_into()
+            .map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid boolean value"))?,
         );
         Ok(SrtOptionValue::Bool(value != 0))
       }
       // Integer options
-      SrtSocketOptions::SrtOptLatency |
-      SrtSocketOptions::SrtOptRCVLatency |
-      SrtSocketOptions::SrtOptPeerLatency => {
-        let value = i32::from_ne_bytes(buffer[..buffer_size as usize].try_into()
-          .map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid integer value"))?
+      SrtSocketOptions::SrtOptLatency
+      | SrtSocketOptions::SrtOptRCVLatency
+      | SrtSocketOptions::SrtOptPeerLatency => {
+        let value = i32::from_ne_bytes(
+          buffer[..buffer_size as usize]
+            .try_into()
+            .map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid integer value"))?,
         );
         Ok(SrtOptionValue::Int(value))
       }
@@ -279,14 +296,7 @@ impl SrtSocketConnection {
   pub fn recv(&self, len: i32) -> Result<Vec<u8>> {
     // Create buffer to store received data
     let mut buf = vec![0u8; len as usize];
-    let bytes_received = unsafe {
-      srt_recv(
-        self.sock,
-        buf.as_mut_ptr() as *mut c_char,
-        len,
-        0,
-      )
-    };
+    let bytes_received = unsafe { srt_recv(self.sock, buf.as_mut_ptr() as *mut c_char, len, 0) };
     if bytes_received == -1 {
       return Err(Error::last_os_error());
     }
