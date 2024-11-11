@@ -7,17 +7,21 @@
  *  file, You can obtain one at http://mozilla.org/MPL/2.0/.
  *
  */
+
 use super::*;
+use serial_test::serial;
 
 const TEST_PORT: u16 = 9000;
 
 #[test]
+#[serial]
 fn test_srt_lifecycle() {
   assert!(startup_srt().is_ok(), "SRT startup failed");
   assert!(cleanup_srt().is_ok(), "SRT cleanup failed");
 }
 
 #[test]
+#[serial]
 fn test_socket_creation() {
   setup();
 
@@ -28,19 +32,21 @@ fn test_socket_creation() {
 }
 
 #[test]
+#[serial]
 fn test_socket_binding() {
   setup();
 
   let socket = SrtSocketConnection::new().expect("Socket creation failed");
-  assert!(
-    socket.bind(TEST_PORT).is_ok(),
-    "Socket binding failed: {}",
-    SrtSocketConnection::get_last_srt_error()
-  );
+  match socket.bind(TEST_PORT) {
+    Ok(_) => assert!(true),
+    Err(e) => panic!("Socket binding failed: {}", e),
+  }
+
   teardown();
 }
 
 #[test]
+#[serial]
 fn test_socket_state() {
   setup();
 
@@ -54,6 +60,7 @@ fn test_socket_state() {
 }
 
 #[test]
+#[serial]
 fn test_socket_options() {
   setup();
 
@@ -61,111 +68,105 @@ fn test_socket_options() {
 
   // Test Setting/Getting Boolean Options
   let value = true;
-  assert!(
-    socket
-      .set_sock_opt(
-        0,
-        SrtSocketOptions::SrtOptReuseAddr,
-        SrtOptionValue::Bool(value)
-      )
-      .is_ok(),
-    "Failed to set SrtOptReuseAddr: {}",
-    SrtSocketConnection::get_last_srt_error()
-  );
+  match socket.set_sock_opt(
+    0,
+    SrtSocketOptions::SrtOptReuseAddr,
+    SrtOptionValue::Bool(value),
+  ) {
+    Ok(_) => assert!(true),
+    Err(e) => panic!("Failed to set SrtOptReuseAddr: {}", e),
+  }
+
   let ret = match socket.get_sock_flag(SrtSocketOptions::SrtOptReuseAddr) {
     Ok(SrtOptionValue::Bool(val)) => val,
+    Err(e) => panic!("Failed to get SrtOptReuseAddr: {}", e),
     _ => panic!("Expected boolean value for SrtOptReuseAddr"),
   };
   assert_eq!(ret, value, "SrtOptReuseAddr mismatch");
 
   let value = false;
-  assert!(
-    socket
-      .set_sock_opt(
-        0,
-        SrtSocketOptions::SrtOptRCVSYN,
-        SrtOptionValue::Bool(value)
-      )
-      .is_ok(),
-    "Failed to set SrtOptRCVSYN: {}",
-    SrtSocketConnection::get_last_srt_error()
-  );
+  match socket.set_sock_opt(
+    0,
+    SrtSocketOptions::SrtOptRCVSYN,
+    SrtOptionValue::Bool(value),
+  ) {
+    Ok(_) => assert!(true),
+    Err(e) => panic!("Failed to set SrtOptRCVSYN: {}", e),
+  }
+
   let ret = match socket.get_sock_flag(SrtSocketOptions::SrtOptRCVSYN) {
     Ok(SrtOptionValue::Bool(val)) => val,
+    Err(e) => panic!("Failed to get SrtOptRCVSYN: {}", e),
     _ => panic!("Expected boolean value for SrtOptRCVSYN"),
   };
   assert_eq!(ret, value, "SrtOptRCVSYN mismatch");
 
   // Test Setting/Getting Integer Options
   let value = 256;
-  assert!(
-    socket
-      .set_sock_opt(
-        0,
-        SrtSocketOptions::SrtOptLatency,
-        SrtOptionValue::Int(value)
-      )
-      .is_ok(),
-    "Failed to set SrtOptLatency: {}",
-    SrtSocketConnection::get_last_srt_error()
-  );
+  match socket.set_sock_opt(
+    0,
+    SrtSocketOptions::SrtOptLatency,
+    SrtOptionValue::Int(value),
+  ) {
+    Ok(_) => assert!(true),
+    Err(e) => panic!("Failed to set SrtOptLatency: {}", e),
+  }
+
   let ret = match socket.get_sock_flag(SrtSocketOptions::SrtOptLatency) {
     Ok(SrtOptionValue::Int(val)) => val,
+    Err(e) => panic!("Failed to get SrtOptLatency: {}", e),
     _ => panic!("Expected integer value for SrtOptLatency"),
   };
   assert_eq!(ret, value, "SrtOptLatency mismatch");
 
   let value = 123;
-  assert!(
-    socket
-      .set_sock_opt(
-        0,
-        SrtSocketOptions::SrtOptRCVLatency,
-        SrtOptionValue::Int(value)
-      )
-      .is_ok(),
-    "Failed to set SrtOptRCVLatency: {}",
-    SrtSocketConnection::get_last_srt_error()
-  );
+  match socket.set_sock_opt(
+    0,
+    SrtSocketOptions::SrtOptRCVLatency,
+    SrtOptionValue::Int(value),
+  ) {
+    Ok(_) => assert!(true),
+    Err(e) => panic!("Failed to set SrtOptRCVLatency: {}", e),
+  }
+
   let ret = match socket.get_sock_flag(SrtSocketOptions::SrtOptRCVLatency) {
     Ok(SrtOptionValue::Int(val)) => val,
+    Err(e) => panic!("Failed to get SrtOptRCVLatency: {}", e),
     _ => panic!("Expected integer value for SrtOptRCVLatency"),
   };
   assert_eq!(ret, value, "SrtOptRCVLatency mismatch");
 
   let value = 1_000_000_000;
-  assert!(
-    socket
-      .set_sock_opt(
-        0,
-        SrtSocketOptions::SrtOptPeerLatency,
-        SrtOptionValue::Int(value)
-      )
-      .is_ok(),
-    "Failed to set SrtOptPeerLatency: {}",
-    SrtSocketConnection::get_last_srt_error()
-  );
+  match socket.set_sock_opt(
+    0,
+    SrtSocketOptions::SrtOptPeerLatency,
+    SrtOptionValue::Int(value),
+  ) {
+    Ok(_) => assert!(true),
+    Err(e) => panic!("Failed to set SrtOptPeerLatency: {}", e),
+  }
+
   let ret = match socket.get_sock_flag(SrtSocketOptions::SrtOptPeerLatency) {
     Ok(SrtOptionValue::Int(val)) => val,
+    Err(e) => panic!("Failed to get SrtOptPeerLatency: {}", e),
     _ => panic!("Expected integer value for SrtOptPeerLatency"),
   };
   assert_eq!(ret, value, "SrtOptPeerLatency mismatch");
 
   // Test Setting/Getting String Options
-  let value = "test";
-  assert!(
-    socket
-      .set_sock_opt(
-        0,
-        SrtSocketOptions::SrtOptStreamID,
-        SrtOptionValue::String(value.to_string())
-      )
-      .is_ok(),
-    "Failed to set stream ID: {}",
-    SrtSocketConnection::get_last_srt_error()
-  );
+  let value = String::from("test");
+  match socket.set_sock_opt(
+    0,
+    SrtSocketOptions::SrtOptStreamID,
+    SrtOptionValue::String(value.clone()),
+  ) {
+    Ok(_) => assert!(true),
+    Err(e) => panic!("Failed to set SrtOptStreamID: {}", e),
+  }
+
   let ret = match socket.get_sock_flag(SrtSocketOptions::SrtOptStreamID) {
     Ok(SrtOptionValue::String(val)) => val,
+    Err(e) => panic!("Failed to get SrtOptStreamID: {}", e),
     _ => panic!("Expected string value for stream ID"),
   };
   assert_eq!(ret, value, "Stream ID mismatch");
@@ -174,23 +175,26 @@ fn test_socket_options() {
 }
 
 #[test]
+#[serial]
 fn test_error_handling() {
   startup_srt().expect("SRT startup failed");
 
   // Test invalid socket operations
   let invalid_socket = SrtSocketConnection { sock: -1 };
   let test_data: &[u8] = b"test";
-  assert!(
-    invalid_socket.send(test_data).is_err(),
-    "Send should fail on invalid socket"
-  );
-  assert!(
-    invalid_socket.recv(256).is_err(),
-    "Recv should fail on invalid socket"
-  );
+
+  match invalid_socket.send(test_data) {
+    Ok(_) => panic!("Send should fail on invalid socket"),
+    Err(e) => assert!(matches!(e, SrtError::SendError(_))),
+  }
+
+  match invalid_socket.recv(256) {
+    Ok(_) => panic!("Recv should fail on invalid socket"),
+    Err(e) => assert!(matches!(e, SrtError::ReceiveError(_))),
+  }
 
   // Test error string retrieval
-  let error_str = SrtSocketConnection::get_last_srt_error();
+  let error_str = get_last_srt_error();
   assert!(!error_str.is_empty(), "Error string should not be empty");
 
   cleanup_srt().expect("SRT cleanup failed");

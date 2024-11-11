@@ -8,10 +8,16 @@
  *
  */
 
+// Optional Tracing
+#[cfg(feature = "tracing")]
+use tracing::{debug, error, info, trace, warn};
+
+use crate::errors::SrtError;
 use std::ffi::{CStr, CString};
-use std::io::{Error, ErrorKind, Result};
 use std::os::raw::{c_char, c_int};
 use std::ptr;
+
+mod errors;
 
 // Declare test module
 #[cfg(test)]
@@ -104,32 +110,56 @@ pub struct SockAddrIn {
   pub sin_zero: [u8; 8],
 }
 
-pub fn startup_srt() -> Result<()> {
+fn get_last_srt_error() -> String {
+  let err_ptr = unsafe { srt_getlasterror_str() };
+
+  if err_ptr.is_null() {
+    return String::from("Unknown SRT error (null error)");
+  }
+
+  let c_string = unsafe { CStr::from_ptr(err_ptr) };
+
+  match c_string.to_str() {
+    Ok(s) => s.to_string(),
+    Err(_) => String::from("Invalid UTF-8 in SRT error message"),
+  }
+}
+
+pub fn startup_srt() -> Result<(), SrtError> {
   let ret = unsafe { srt_startup() };
   if ret == -1 {
-    return Err(Error::last_os_error());
+    return Err(SrtError::SrtError(format!(
+      "Failed to start SRT: {}",
+      get_last_srt_error()
+    )));
   }
   Ok(())
 }
 
-pub fn cleanup_srt() -> Result<()> {
+pub fn cleanup_srt() -> Result<(), SrtError> {
   let ret = unsafe { srt_cleanup() };
   if ret == -1 {
-    return Err(Error::last_os_error());
+    return Err(SrtError::SrtError(format!(
+      "Failed to cleanup SRT: {}",
+      get_last_srt_error()
+    )));
   }
   Ok(())
 }
 
 impl SrtSocketConnection {
-  pub fn new() -> Result<Self> {
+  pub fn new() -> Result<Self, SrtError> {
     let sock = unsafe { srt_create_socket() };
     if sock == -1 {
-      return Err(Error::last_os_error());
+      return Err(SrtError::SrtError(format!(
+        "Failed to create SRT socket: {}",
+        get_last_srt_error()
+      )));
     }
     Ok(Self { sock })
   }
 
-  pub fn bind(&self, port: u16) -> Result<()> {
+  pub fn bind(&self, port: u16) -> Result<(), SrtError> {
     let sockaddr = SockAddrIn {
       sin_family: 2,
       sin_port: port.to_be(),
@@ -138,31 +168,36 @@ impl SrtSocketConnection {
     };
     let ret = unsafe { srt_bind(self.sock, &sockaddr, size_of::<SockAddrIn>() as i32) };
     if ret == -1 {
-      return Err(Error::last_os_error());
+      return Err(SrtError::BindError(port));
     }
     Ok(())
   }
 
-  pub fn listen(&self, backlog: i32) -> Result<()> {
+  pub fn listen(&self, backlog: i32) -> Result<(), SrtError> {
     let ret = unsafe { srt_listen(self.sock, backlog) };
     if ret == -1 {
-      return Err(Error::last_os_error());
+      return Err(SrtError::ListenError(get_last_srt_error()));
     }
     Ok(())
   }
 
-  pub fn accept(&self) -> Result<Self> {
+  pub fn accept(&self) -> Result<Self, SrtError> {
     let sock = unsafe { srt_accept(self.sock, ptr::null_mut(), ptr::null_mut()) };
     if sock == -1 {
-      // TODO: Disconnect Error
-      return Err(Error::last_os_error());
+      return Err(SrtError::AcceptError(get_last_srt_error()));
     }
     Ok(Self { sock })
   }
 
-  pub fn close(&self) {
-    // TODO: Handle error w/ SrtError
-    unsafe { srt_close(self.sock) };
+  pub fn close(&self) -> Result<(), SrtError> {
+    let ret = unsafe { srt_close(self.sock) };
+    if ret == -1 {
+      return Err(SrtError::SrtError(format!(
+        "Failed to close SRT socket: {}",
+        get_last_srt_error()
+      )));
+    }
+    Ok(())
   }
 
   pub fn set_sock_opt(
@@ -170,7 +205,7 @@ impl SrtSocketConnection {
     level: c_int,
     opt_name: SrtSocketOptions,
     opt_value: SrtOptionValue,
-  ) -> Result<()> {
+  ) -> Result<(), SrtError> {
     match opt_value {
       SrtOptionValue::Bool(bool_value) => {
         let val: i32 = if bool_value { 1 } else { 0 };
@@ -185,7 +220,7 @@ impl SrtSocketConnection {
           )
         };
         if ret == -1 {
-          return Err(Error::last_os_error());
+          return Err(SrtError::SetSocketOptionError(get_last_srt_error()));
         }
       }
       SrtOptionValue::Int(int_value) => {
@@ -200,12 +235,12 @@ impl SrtSocketConnection {
           )
         };
         if ret == -1 {
-          return Err(Error::last_os_error());
+          return Err(SrtError::SetSocketOptionError(get_last_srt_error()));
         }
       }
       SrtOptionValue::String(string_value) => {
         let c_string = CString::new(string_value)
-          .map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid string value"))?;
+          .map_err(|_| SrtError::SetSocketOptionError(String::from("Invalid string")))?;
         let ret = unsafe {
           srt_setsockopt(
             self.sock,
@@ -216,14 +251,14 @@ impl SrtSocketConnection {
           )
         };
         if ret == -1 {
-          return Err(Error::last_os_error());
+          return Err(SrtError::SetSocketOptionError(get_last_srt_error()));
         }
       }
     }
     Ok(())
   }
 
-  pub fn get_sock_flag(&self, opt_name: SrtSocketOptions) -> Result<SrtOptionValue> {
+  pub fn get_sock_flag(&self, opt_name: SrtSocketOptions) -> Result<SrtOptionValue, SrtError> {
     // Start with a large buffer size
     let mut buffer = vec![0u8; 1024];
     let mut buffer_size = buffer.len() as c_int;
@@ -237,7 +272,7 @@ impl SrtSocketConnection {
       )
     };
     if ret == -1 {
-      return Err(Error::last_os_error());
+      return Err(SrtError::GetSocketOptionError(get_last_srt_error()));
     }
 
     // Different options have different types
@@ -245,12 +280,14 @@ impl SrtSocketConnection {
       // Boolean options
       SrtSocketOptions::SrtOptRCVSYN | SrtSocketOptions::SrtOptReuseAddr => {
         if buffer_size != 1 {
-          return Err(Error::new(ErrorKind::InvalidData, "Invalid boolean value"));
+          return Err(SrtError::GetSocketOptionError(String::from(
+            "Invalid boolean value",
+          )));
         }
         let value = i32::from_ne_bytes(
           buffer[..std::mem::size_of::<i32>()]
             .try_into()
-            .map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid boolean value"))?,
+            .map_err(|_| SrtError::GetSocketOptionError(String::from("Invalid boolean value")))?,
         );
         Ok(SrtOptionValue::Bool(value != 0))
       }
@@ -261,23 +298,23 @@ impl SrtSocketConnection {
         let value = i32::from_ne_bytes(
           buffer[..buffer_size as usize]
             .try_into()
-            .map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid integer value"))?,
+            .map_err(|_| SrtError::GetSocketOptionError(String::from("Invalid integer value")))?,
         );
         Ok(SrtOptionValue::Int(value))
       }
       // String Options
       SrtSocketOptions::SrtOptStreamID => {
         let value = CStr::from_bytes_with_nul(&buffer[..buffer_size as usize])
-          .map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid string value"))?
+          .map_err(|_| SrtError::GetSocketOptionError(String::from("Invalid string value")))?
           .to_str()
-          .map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid string value"))?
+          .map_err(|_| SrtError::GetSocketOptionError(String::from("Invalid string value")))?
           .to_string();
         Ok(SrtOptionValue::String(value))
       }
     }
   }
 
-  pub fn send(&self, data: &[u8]) -> Result<()> {
+  pub fn send(&self, data: &[u8]) -> Result<(), SrtError> {
     let ret = unsafe {
       srt_send(
         self.sock,
@@ -287,28 +324,21 @@ impl SrtSocketConnection {
       )
     };
     if ret == -1 {
-      eprintln!("Error sending data: {:?}", Self::get_last_srt_error());
-      return Err(Error::last_os_error());
+      return Err(SrtError::SendError(get_last_srt_error()));
     }
     Ok(())
   }
 
-  pub fn recv(&self, len: i32) -> Result<Vec<u8>> {
+  pub fn recv(&self, len: i32) -> Result<Vec<u8>, SrtError> {
     // Create buffer to store received data
     let mut buf = vec![0u8; len as usize];
     let bytes_received = unsafe { srt_recv(self.sock, buf.as_mut_ptr() as *mut c_char, len, 0) };
     if bytes_received == -1 {
-      return Err(Error::last_os_error());
+      return Err(SrtError::ReceiveError(get_last_srt_error()));
     }
     // Truncate buffer to actual received bytes
     buf.truncate(bytes_received as usize);
     Ok(buf)
-  }
-
-  pub fn get_last_srt_error() -> String {
-    let err = unsafe { srt_getlasterror_str() };
-    let err = unsafe { CStr::from_ptr(err) };
-    err.to_str().unwrap().to_string()
   }
 
   pub fn get_socket_state(&self) -> SrtSocketStatus {
@@ -317,8 +347,13 @@ impl SrtSocketConnection {
 }
 
 impl Drop for SrtSocketConnection {
-  // TODO: Use self.close() instead of unsafe close
   fn drop(&mut self) {
-    unsafe { srt_close(self.sock) };
+    match self.close() {
+      Ok(_) => (),
+      Err(_e) => {
+        #[cfg(feature = "tracing")]
+        warn!("Failed to close SRT socket: {}", _e)
+      }
+    };
   }
 }
