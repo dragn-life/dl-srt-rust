@@ -13,7 +13,7 @@
 use tracing::{debug, error, info, trace, warn};
 
 use crate::errors::SrtError;
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
@@ -239,15 +239,16 @@ impl SrtSocketConnection {
         }
       }
       SrtOptionValue::String(string_value) => {
-        let c_string = CString::new(string_value)
-          .map_err(|_| SrtError::SetSocketOptionError(String::from("Invalid string")))?;
+        // Convert the string to bytes directly
+        let bytes = string_value.as_bytes();
+
         let ret = unsafe {
           srt_setsockopt(
             self.sock,
             level,
             opt_name,
-            c_string.as_ptr() as *const c_char,
-            c_string.as_bytes_with_nul().len() as i32,
+            bytes.as_ptr() as *const c_char,
+            bytes.len() as i32,
           )
         };
         if ret == -1 {
@@ -260,7 +261,7 @@ impl SrtSocketConnection {
 
   pub fn get_sock_flag(&self, opt_name: SrtSocketOptions) -> Result<SrtOptionValue, SrtError> {
     // Start with a large buffer size
-    let mut buffer = vec![0u8; 1024];
+    let mut buffer = vec![0u8; 512];
     let mut buffer_size = buffer.len() as c_int;
 
     let ret = unsafe {
@@ -304,11 +305,22 @@ impl SrtSocketConnection {
       }
       // String Options
       SrtSocketOptions::SrtOptStreamID => {
-        let value = CStr::from_bytes_with_nul(&buffer[..buffer_size as usize])
-          .map_err(|_| SrtError::GetSocketOptionError(String::from("Invalid string value")))?
-          .to_str()
-          .map_err(|_| SrtError::GetSocketOptionError(String::from("Invalid string value")))?
-          .to_string();
+        // Trim Buffer
+        buffer.truncate(buffer_size as usize);
+        if buffer.is_empty() {
+          return Ok(SrtOptionValue::String(String::new()));
+        }
+        let string_length = buffer.iter().position(|&c| c == 0).unwrap_or(buffer.len());
+
+        // Create a string from the buffer
+        let value = match String::from_utf8(buffer[..string_length].to_vec()) {
+          Ok(s) => s,
+          Err(_) => {
+            return Err(SrtError::GetSocketOptionError(
+              "Invalid UTF-8 in String Flag".into(),
+            ))
+          }
+        };
         Ok(SrtOptionValue::String(value))
       }
     }

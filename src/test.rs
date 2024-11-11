@@ -153,25 +153,51 @@ fn test_socket_options() {
   };
   assert_eq!(ret, value, "SrtOptPeerLatency mismatch");
 
-  // Test Setting/Getting String Options
-  let value = String::from("test");
-  match socket.set_sock_opt(
-    0,
-    SrtSocketOptions::SrtOptStreamID,
-    SrtOptionValue::String(value.clone()),
-  ) {
-    Ok(_) => assert!(true),
-    Err(e) => panic!("Failed to set SrtOptStreamID: {}", e),
-  }
-
-  let ret = match socket.get_sock_flag(SrtSocketOptions::SrtOptStreamID) {
-    Ok(SrtOptionValue::String(val)) => val,
-    Err(e) => panic!("Failed to get SrtOptStreamID: {}", e),
-    _ => panic!("Expected string value for stream ID"),
-  };
-  assert_eq!(ret, value, "Stream ID mismatch");
-
   teardown();
+}
+
+#[test]
+#[serial]
+fn test_stream_id_flag() {
+  let very_long_string = "a".repeat(511);
+  let test_cases = vec![
+    "test",
+    "space test",
+    "",
+    "あいうえお", // Non-ASCII Japanese characters
+    very_long_string.as_str(),
+  ];
+
+  for test_value in test_cases {
+    setup();
+
+    let socket = SrtSocketConnection::new().expect("Socket creation failed");
+
+    let value = String::from(test_value);
+
+    // Test setting the Stream ID
+    match socket.set_sock_opt(
+      0,
+      SrtSocketOptions::SrtOptStreamID,
+      SrtOptionValue::String(value.clone()),
+    ) {
+      Ok(_) => assert!(true),
+      Err(e) => panic!("Failed to set SrtOptStreamID with '{}': {}", value, e),
+    }
+
+    // Test getting the Stream ID
+    let ret = match socket.get_sock_flag(SrtSocketOptions::SrtOptStreamID) {
+      Ok(SrtOptionValue::String(val)) => val,
+      Ok(other) => panic!("Expected string value for SrtOptStreamID, got {:?}", other),
+      Err(e) => panic!("Failed to get SrtOptStreamID: {}", e),
+    };
+    assert_eq!(
+      ret, value,
+      "Stream ID mismatch for test case '{}'\nExpected: {}\nGot: {}",
+      test_value, value, ret
+    );
+    teardown();
+  }
 }
 
 #[test]
