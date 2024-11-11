@@ -17,7 +17,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
-mod errors;
+pub mod errors;
 
 // Declare test module
 #[cfg(test)]
