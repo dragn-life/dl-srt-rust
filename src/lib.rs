@@ -10,7 +10,7 @@
 
 // Optional Tracing
 #[cfg(feature = "tracing")]
-use tracing::{debug, error, info, trace, warn};
+use tracing::{warn};
 
 use crate::errors::SrtError;
 use std::ffi::CStr;
